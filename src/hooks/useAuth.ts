@@ -574,7 +574,11 @@ export function useAuth() {
         'last_redirect_time',
         'redirect_path',
         'auth_navigation_intent',
-        'auth_return_url'
+        'auth_return_url',
+        'last_session_notice',
+        'last_recovery_notice',
+        'last_error_notice',
+        'session_refresh_attempt'
       ];
       
       authKeys.forEach(key => localStorage.removeItem(key));
@@ -798,6 +802,22 @@ export function useAuth() {
         
         if (error) {
           debugLog('sessionCheckError', error.message);
+          
+          // Handle specific errors differently rather than throwing
+          if (error.message.includes("Failed to fetch") || error.message.includes("Network Error")) {
+            debugLog('networkError', 'Network error during session check - allowing navigation');
+            setLoading(false);
+            setInitialized(true);
+            
+            // Allow navigation without redirecting
+            toast({
+              title: "Network issue",
+              description: "Unable to verify your session due to network issues.",
+              variant: "default",
+            });
+            return;
+          }
+          
           throw error;
         }
         
@@ -896,6 +916,52 @@ export function useAuth() {
           return;
         }
         
+        // Check if we have a stored session in localStorage when Supabase doesn't find one
+        // This helps with cases where the session exists but Supabase fails to retrieve it
+        if (!data?.session && isProtectedPath(pathname)) {
+          try {
+            const storedSession = localStorage.getItem('sb:session');
+            if (storedSession) {
+              const parsedSession = JSON.parse(storedSession);
+              if (parsedSession && parsedSession.user) {
+                debugLog('usingStoredSession', 'Session not found via API but exists in localStorage');
+                
+                // Use the localStorage session
+                setSession(parsedSession);
+                setUser(parsedSession.user);
+                
+                // Get user access
+                const access = await fetchUserAccess(parsedSession.user.id);
+                setUserAccess(access);
+                
+                // Complete initialization without redirect
+                setLoading(false);
+                setInitialized(true);
+                
+                // Check if we've already shown the session notice recently
+                const lastSessionNotice = localStorage.getItem('last_session_notice');
+                const now = Date.now();
+                const recentNotice = lastSessionNotice && (now - parseInt(lastSessionNotice)) < 300000; // 5 minutes
+                
+                if (!recentNotice) {
+                  // Warn the user that there might be session issues, but only once per 5 minutes
+                  toast({
+                    title: "Session notice",
+                    description: "Using saved session data. Some features may require refreshing.",
+                    variant: "default",
+                  });
+                  
+                  // Record that we showed the notice
+                  localStorage.setItem('last_session_notice', now.toString());
+                }
+                return;
+              }
+            }
+          } catch (e) {
+            debugLog('storedSessionError', e);
+          }
+        }
+        
         // Handle authenticated state - if there's a session
         if (data?.session) {
           debugLog('sessionFound', {
@@ -985,6 +1051,49 @@ export function useAuth() {
               return;
             }
             
+            // Check if there's a session cookie or token in localStorage that we might be missing
+            const hasRefreshToken = document.cookie.includes('sb-refresh-token') || 
+                                  localStorage.getItem('sb-refresh-token');
+            
+            if (hasRefreshToken) {
+              debugLog('foundTokenButNoSession', 'Found token but no session - allowing access temporarily');
+              
+              // Check if we've already shown the session recovery notice recently
+              const lastRecoveryNotice = localStorage.getItem('last_recovery_notice');
+              const now = Date.now();
+              const recentNotice = lastRecoveryNotice && (now - parseInt(lastRecoveryNotice)) < 300000; // 5 minutes
+              
+              if (!recentNotice) {
+                // Allow access to the page but warn the user
+                toast({
+                  title: "Session recovery",
+                  description: "Attempting to recover your session. Please refresh if you experience issues.",
+                  variant: "default",
+                });
+                
+                // Record that we showed the notice
+                localStorage.setItem('last_recovery_notice', now.toString());
+              }
+              
+              // Try refreshing the page once to see if that helps recover the session
+              const hasRefreshed = localStorage.getItem('session_refresh_attempt');
+              if (!hasRefreshed) {
+                localStorage.setItem('session_refresh_attempt', 'true');
+                // Set a timeout to clear this flag so we don't get stuck
+                setTimeout(() => {
+                  localStorage.removeItem('session_refresh_attempt');
+                }, 30000);
+                
+                // Complete initialization without redirect
+                setLoading(false);
+                setInitialized(true);
+                return;
+              }
+              
+              // Clear the refresh attempt flag
+              localStorage.removeItem('session_refresh_attempt');
+            }
+            
             debugLog('accessingProtectedPathWithoutSession', { pathname, redirecting: true });
             
             // Save the current path to redirect back after login
@@ -1000,6 +1109,36 @@ export function useAuth() {
       } catch (error) {
         console.error('Error during auth initialization:', error);
         debugLog('initError', error);
+        
+        // Check if there might be an auth token that's not being recognized
+        const hasAuthTokens = document.cookie.includes('sb-refresh-token') || 
+                             localStorage.getItem('sb-refresh-token');
+        
+        if (hasAuthTokens && isProtectedPath(pathname)) {
+          debugLog('tokensPresentDespiteError', 'Auth tokens found despite error - allowing access');
+          
+          // Check if we've already shown the session error notice recently
+          const lastErrorNotice = localStorage.getItem('last_error_notice');
+          const now = Date.now();
+          const recentNotice = lastErrorNotice && (now - parseInt(lastErrorNotice)) < 300000; // 5 minutes
+          
+          if (!recentNotice) {
+            // Allow access but warn the user
+            toast({
+              title: "Session error",
+              description: "Error verifying your session. Some features may be limited.",
+              variant: "default",
+            });
+            
+            // Record that we showed the notice
+            localStorage.setItem('last_error_notice', now.toString());
+          }
+          
+          setLoading(false);
+          setInitialized(true);
+          return;
+        }
+        
         // Force manual login if there's an error during initialization
         localStorage.setItem('require_manual_login', 'true');
         document.cookie = `require_manual_login=true; path=/; max-age=3600`;
