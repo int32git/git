@@ -23,6 +23,14 @@ const apiPaths = [
   '/api/',
 ];
 
+// Special paths that should be allowed even without auth
+const specialPaths = [
+  '/_next',
+  '/static',
+  '/favicon.ico',
+  '/images',
+];
+
 // Debug mode for middleware
 const DEBUG_MIDDLEWARE = process.env.NODE_ENV === 'development';
 
@@ -43,6 +51,12 @@ export async function middleware(req: NextRequest) {
   
   // Add security headers to all responses
   setSecurityHeaders(res);
+  
+  // Check if this is a static asset or special path that should bypass auth
+  if (specialPaths.some(path => pathname.startsWith(path))) {
+    debugLog('Path is a special path, bypassing auth checks');
+    return res;
+  }
   
   // Check if we have a ?force=true parameter which bypasses redirects
   const url = new URL(req.url);

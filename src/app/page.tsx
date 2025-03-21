@@ -2,14 +2,10 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CheckCircle2, Shield, BarChart3, Tags, Layers, RefreshCw, Activity, Database, FileText, Users } from "lucide-react";
-import { Header } from "@/components/header";
-import { Footer } from "@/components/footer";
 
 export default function Home() {
   return (
     <div className="flex flex-col min-h-screen">
-      <Header />
-      
       {/* Hero Section */}
       <section className="py-20 px-4 text-center bg-gradient-to-b from-background to-muted">
         <div className="container mx-auto max-w-4xl">
@@ -249,8 +245,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-      
-      <Footer />
     </div>
   );
 } 

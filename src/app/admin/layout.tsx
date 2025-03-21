@@ -35,7 +35,7 @@ export default function AdminLayout({
     
     // If we've arrived at the admin dashboard, clean up any redirect timestamps
     // to avoid redirect loops on future navigation
-    if (pathname.startsWith('/admin')) {
+    if (pathname && pathname.startsWith('/admin')) {
       sessionStorage.removeItem('last_redirect_time');
     }
   }, [pathname]);
@@ -92,7 +92,7 @@ export default function AdminLayout({
       
       // Use a longer delay to prevent rapid redirects
       setTimeout(() => {
-        window.location.replace('/auth/signin');
+        router.push('/auth/signin');
       }, 2000);
       return;
     }
@@ -118,7 +118,7 @@ export default function AdminLayout({
       
       // Use a longer delay
       setTimeout(() => {
-        window.location.replace('/dashboard');
+        router.push('/dashboard');
       }, 2000);
       return;
     }
@@ -138,7 +138,7 @@ export default function AdminLayout({
       
       // Use a longer delay
       setTimeout(() => {
-        window.location.replace('/auth/signin');
+        router.push('/auth/signin');
       }, 2000);
       return;
     }

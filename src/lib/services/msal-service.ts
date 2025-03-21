@@ -98,10 +98,26 @@ export function getMsalInstance(): PublicClientApplication {
   }
   
   // Try to retrieve config from session storage
-  const storedConfig = sessionStorage.getItem(MSAL_CONFIG_KEY);
-  if (storedConfig) {
-    const { clientId, tenantId } = JSON.parse(storedConfig);
-    return initializeMsal(clientId, tenantId);
+  try {
+    const storedConfig = sessionStorage.getItem(MSAL_CONFIG_KEY);
+    if (storedConfig) {
+      const { clientId, tenantId } = JSON.parse(storedConfig);
+      if (clientId && tenantId) {
+        return initializeMsal(clientId, tenantId);
+      }
+    }
+    
+    // Check if env vars are available as a fallback
+    if (typeof process !== 'undefined' && 
+        process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID && 
+        process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID) {
+      return initializeMsal(
+        process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID,
+        process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID
+      );
+    }
+  } catch (error) {
+    console.error('Error initializing MSAL from stored config:', error);
   }
   
   throw new Error('MSAL instance not initialized. Call initializeMsal first.');
@@ -151,7 +167,28 @@ export async function loginWithRedirect(scopes: string[]): Promise<void> {
  */
 export async function handleRedirectResponse(): Promise<AuthenticationResult | null> {
   try {
-    const instance = getMsalInstance();
+    // Check if instance exists, if not attempt to initialize
+    let instance: PublicClientApplication;
+    try {
+      instance = getMsalInstance();
+    } catch (initError) {
+      console.error('Failed to get MSAL instance during redirect handling:', initError);
+      // Try to initialize from environment variables as a fallback
+      if (typeof process !== 'undefined' && 
+          process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID && 
+          process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID) {
+        
+        instance = initializeMsal(
+          process.env.NEXT_PUBLIC_MICROSOFT_CLIENT_ID,
+          process.env.NEXT_PUBLIC_MICROSOFT_TENANT_ID
+        );
+      } else {
+        // If we can't initialize, re-throw the error
+        throw initError;
+      }
+    }
+    
+    // Now handle the redirect
     const response = await instance.handleRedirectPromise();
     
     if (response) {
@@ -241,6 +278,13 @@ export async function acquireTokenWithPopup(scopes: string[]): Promise<string | 
     console.error('Acquire token with popup failed:', error);
     throw error;
   }
+}
+
+/**
+ * Check if MSAL is initialized
+ */
+export function isMsalInitialized(): boolean {
+  return msalInstance !== null;
 }
 
 /**

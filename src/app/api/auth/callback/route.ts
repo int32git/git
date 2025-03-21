@@ -1,8 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { Database } from '@/types/supabase';
+import { type NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
+import type { Database } from '@/types/supabase';
 import { CookieOptions } from '@supabase/ssr';
 
 // Explicitly set dynamic mode to force-dynamic to ensure proper SSR handling on Vercel
@@ -10,57 +10,28 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
 
+type AuthType = "signup" | "recovery" | "invite" | undefined;
+
+/**
+ * This route handles the callback from Supabase Auth.
+ * It is called when a user completes the sign-in or sign-up process
+ * with a third-party provider or magic link.
+ */
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const origin = requestUrl.origin;
-  
+  const code = requestUrl.searchParams.get('code');
+  const type = requestUrl.searchParams.get('type') as AuthType;
+  const next = requestUrl.searchParams.get('next') || '/dashboard';
+  const cookieStore = cookies();
+
+  if (!code) {
+    console.error('No code provided in callback');
+    return NextResponse.redirect(`${origin}/auth/error?error=${encodeURIComponent('No authentication code provided')}`);
+  }
+
   try {
-    // Get the URL including search params
-    console.log('Auth callback triggered', new Date().toISOString());
-    
-    const code = requestUrl.searchParams.get('code');
-    const error = requestUrl.searchParams.get('error');
-    const errorDescription = requestUrl.searchParams.get('error_description');
-    const type = requestUrl.searchParams.get('type');
-    
-    // Log the request details for debugging
-    console.log(`Auth callback details:
-      - Code present: ${code ? 'yes' : 'no'}
-      - Error: ${error || 'none'}
-      - Error description: ${errorDescription || 'none'}
-      - Type: ${type || 'none'}`
-    );
-    
-    // Handle errors from the OAuth/email verification flow
-    if (error) {
-      console.error(`Auth callback error: ${error}`, errorDescription);
-      
-      // Different error handling based on error type
-      if (error === 'access_denied') {
-        return NextResponse.redirect(
-          new URL(`/auth/signin?error=${encodeURIComponent('Access was denied. Please try again.')}`, origin)
-        );
-      } else if (error.includes('invalid_grant')) {
-        return NextResponse.redirect(
-          new URL(`/auth/signin?error=${encodeURIComponent('Verification link has expired or was already used. Please request a new one.')}`, origin)
-        );
-      } else {
-        return NextResponse.redirect(
-          new URL(`/auth/signin?error=${encodeURIComponent(errorDescription || error)}`, origin)
-        );
-      }
-    }
-    
-    // If there's no code, that's unexpected
-    if (!code) {
-      console.error('No code parameter in auth callback');
-      return NextResponse.redirect(
-        new URL('/auth/signin?error=Missing+verification+code', origin)
-      );
-    }
-    
-    // Create a Supabase client for the Route Handler
-    const cookieStore = cookies();
+    console.log(`Processing auth callback with code, type: ${type}`);
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -79,79 +50,39 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    // Exchange the code for a session
-    console.log('Exchanging code for session...');
-    const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
-    
-    // Handle any errors during code exchange
-    if (exchangeError) {
-      console.error('Error exchanging code for session:', exchangeError);
-      
-      if (exchangeError.message.includes('expired')) {
-        return NextResponse.redirect(
-          new URL(`/auth/signin?error=${encodeURIComponent('Verification link has expired. Please request a new one.')}`, origin)
-        );
-      } else {
-        return NextResponse.redirect(
-          new URL(`/auth/signin?error=${encodeURIComponent(exchangeError.message)}`, origin)
-        );
-      }
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) {
+      console.error('Error exchanging code for session:', error);
+      throw error;
     }
+
+    console.log('Successfully exchanged code for session');
     
-    console.log('Session exchange successful, user ID:', data?.user?.id);
+    // Revalidate relevant paths to ensure fresh data after auth state change
+    revalidatePath('/dashboard');
+    revalidatePath('/profile');
     
-    // Get the user's email (safely)
-    const email = data?.user?.email || '';
-    
-    // Check if this was for email verification or password recovery
-    if (type === 'signup' || (!type && data?.user?.email_confirmed_at)) {
-      // Email verification after signup
-      console.log('Email verified after signup:', email);
-      
-      // Redirect to verification success page with email and verified flag
-      return NextResponse.redirect(
-        new URL(`/auth/verification-success?email=${encodeURIComponent(email)}&action=signup&verified=true`, origin)
-      );
+    // Handle different auth flows
+    if (type === 'signup') {
+      console.log('Signup flow detected, redirecting to onboarding');
+      return NextResponse.redirect(`${origin}/onboarding`);
     } else if (type === 'recovery') {
-      // Password reset flow
-      console.log('Password recovery flow for:', email);
-      
-      // Redirect to reset password page
-      return NextResponse.redirect(
-        new URL(`/auth/reset-password?email=${encodeURIComponent(email)}`, origin)
-      );
+      console.log('Recovery flow detected, redirecting to password reset');
+      return NextResponse.redirect(`${origin}/auth/reset-password`);
     } else if (type === 'invite') {
-      // Invitation flow
-      console.log('User accepted invitation:', email);
-      
-      // Redirect to set password page for invited users
-      return NextResponse.redirect(
-        new URL(`/auth/set-password?email=${encodeURIComponent(email)}`, origin)
-      );
+      console.log('Invite flow detected, redirecting to accept-invite');
+      return NextResponse.redirect(`${origin}/accept-invite`);
     }
-    
-    // For standard sign-in flows, record login timestamp and redirect to dashboard
-    try {
-      // Optional: Record login timestamp in user profile
-      if (data?.user?.id) {
-        await supabase
-          .from('profiles')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('id', data.user.id);
-      }
-    } catch (profileErr) {
-      // Non-critical error, just log it but continue
-      console.error('Error updating profile timestamp:', profileErr);
-    }
-    
-    console.log('Redirecting to dashboard');
-    return NextResponse.redirect(new URL('/dashboard', origin));
-  } catch (err) {
-    // Catch any unexpected errors
+
+    // Default redirect
+    console.log(`Auth flow completed, redirecting to ${next}`);
+    return NextResponse.redirect(`${origin}${next}`);
+  } catch (err: any) {
     console.error('Unexpected error in auth callback:', err);
-    
+    const errorMessage = err?.message || 'An unexpected error occurred during authentication';
     return NextResponse.redirect(
-      new URL('/auth/signin?error=An+unexpected+error+occurred', origin)
+      `${origin}/auth/error?error=${encodeURIComponent(errorMessage)}`
     );
   }
 } 

@@ -3,6 +3,9 @@ import { Inter } from "next/font/google";
 import "../styles/globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import MicrosoftAuthProvider from "@/components/providers/microsoft-auth-provider";
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import { SupabaseProvider } from "@/components/providers/supabase-provider";
+import { ClientLayoutWrapper } from "@/components/client-layout-wrapper";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -44,12 +47,21 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <MicrosoftAuthProvider>
-          <main className="min-h-screen bg-background">
-            {children}
-          </main>
-          <Toaster />
-        </MicrosoftAuthProvider>
+        <SupabaseProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <MicrosoftAuthProvider>
+              <div className="flex flex-col min-h-screen">
+                <ClientLayoutWrapper>{children}</ClientLayoutWrapper>
+                <Toaster />
+              </div>
+            </MicrosoftAuthProvider>
+          </ThemeProvider>
+        </SupabaseProvider>
       </body>
     </html>
   );

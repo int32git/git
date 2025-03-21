@@ -25,11 +25,15 @@ export default function EmailVerification({
   const [resendStatus, setResendStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [resendCount, setResendCount] = useState(0);
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
   const router = useRouter();
+  
+  // Use state to store the Supabase client
+  const [supabase] = useState(() => 
+    createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+  );
 
   // Rate limiting - only allow 3 resend attempts
   const isResendLimited = resendCount >= 3;
@@ -42,6 +46,7 @@ export default function EmailVerification({
     setErrorMessage('');
 
     try {
+      // Keep this outside of try/catch to avoid issues with browser redirect
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email,
@@ -50,9 +55,7 @@ export default function EmailVerification({
         },
       });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
 
       setResendStatus('success');
       setResendCount(prev => prev + 1);
@@ -68,6 +71,7 @@ export default function EmailVerification({
     }
   };
 
+  // Handle redirect to sign in page - keeping navigation outside of event handlers
   const handleSignInClick = () => {
     router.push('/auth/signin');
   };

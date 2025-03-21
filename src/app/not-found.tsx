@@ -19,7 +19,7 @@ export default function NotFound() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col min-h-screen items-center justify-center bg-gradient-to-b from-background to-muted px-4">
+      <div className="min-h-[calc(100vh-200px)] px-4 flex items-center justify-center">
         <Card className="w-full max-w-md animate-scaleIn border-muted-foreground/20">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 bg-muted rounded-full p-3 w-16 h-16 flex items-center justify-center">

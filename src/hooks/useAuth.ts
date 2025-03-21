@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '../lib/supabase-client';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { UserAccess } from '../types/user-types';
+import { useRouter } from 'next/navigation';
 
 // Define the user role type to match the database enum
 export type UserRole = 'basic_user' | 'premium_user' | 'admin';
@@ -27,6 +28,7 @@ export function useAuth() {
   const [isManualLoginRequired, setIsManualLoginRequired] = useState(DEFAULT_REQUIRE_MANUAL_LOGIN);
   const [redirectsDetected, setRedirectsDetected] = useState(0);
   const { toast } = useToast();
+  const router = useRouter();
 
   // Debug mode for development
   const DEBUG_AUTH = process.env.NODE_ENV === 'development';
@@ -186,7 +188,7 @@ export function useAuth() {
         }
         localStorage.setItem('last_redirect_time', now.toString());
         document.cookie = `last_redirect_time=${now}; path=/; max-age=5`;
-        window.location.replace('/dashboard');
+        router.push('/dashboard');
         return;
       }
       setUserAccess(access);
@@ -201,9 +203,9 @@ export function useAuth() {
       localStorage.setItem('last_redirect_time', now.toString());
       document.cookie = `last_redirect_time=${now}; path=/; max-age=5`;
       if (access.role === 'admin') {
-        window.location.replace('/admin');
+        router.push('/admin');
       } else {
-        window.location.replace('/dashboard');
+        router.push('/dashboard');
       }
     } catch (error) {
       console.error('Error routing based on role:', error);
@@ -214,9 +216,9 @@ export function useAuth() {
       }
       localStorage.setItem('last_redirect_time', now.toString());
       document.cookie = `last_redirect_time=${now}; path=/; max-age=5`;
-      window.location.replace('/dashboard');
+      router.push('/dashboard');
     }
-  }, [fetchUserAccess, checkManualLoginRequired]);
+  }, [fetchUserAccess, checkManualLoginRequired, router]);
 
   const signIn = useCallback(async ({ email, password, remember }: { email: string; password: string; remember: boolean }) => {
     try {
@@ -313,7 +315,7 @@ export function useAuth() {
             // Use a small delay to ensure the debug logs are written 
             // before the page transition
             setTimeout(() => {
-              window.location.href = `${savedReturnUrl}?from_auth=true`;
+              router.push(`${savedReturnUrl}?from_auth=true`);
             }, 300);
             
             return { success: true, data };
@@ -345,7 +347,7 @@ export function useAuth() {
             // Use a longer delay to ensure the debug logs are written 
             // before the page transition
             setTimeout(() => {
-              window.location.href = `${destinationPath}?from_auth=true`;
+              router.push(`${destinationPath}?from_auth=true`);
             }, 300);
           } else {
             // Default user access
@@ -373,7 +375,7 @@ export function useAuth() {
             // Use a longer delay to ensure the debug logs are written 
             // before the page transition
             setTimeout(() => {
-              window.location.href = '/dashboard?from_auth=true';
+              router.push('/dashboard?from_auth=true');
             }, 300);
           }
         } catch (accessError) {
@@ -394,7 +396,7 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  }, [fetchUserAccess, debugLog, requireManualLogin]);
+  }, [fetchUserAccess, debugLog, requireManualLogin, router]);
 
   const signUp = useCallback(async ({ email, password, metadata }: { email: string; password: string; metadata?: any }) => {
     try {
@@ -439,7 +441,7 @@ export function useAuth() {
       localStorage.clear();
       document.cookie = 'require_manual_login=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
       document.cookie = 'last_redirect_time=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-      window.location.replace('/auth/signin');
+      router.push('/auth/signin');
     } catch (error) {
       console.error('Sign out error:', error);
       toast({
@@ -450,7 +452,7 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, router]);
 
   // Global initialization - delayed to avoid race conditions
   useEffect(() => {
@@ -612,7 +614,7 @@ export function useAuth() {
                 
                 // Redirect but wait a moment to ensure logs are written
                 setTimeout(() => {
-                  window.location.href = `${dashboardPath}?from_auth=true`;
+                  router.push(`${dashboardPath}?from_auth=true`);
                 }, 100);
                 return;
               }
@@ -634,7 +636,7 @@ export function useAuth() {
                 
                 // Redirect but wait a moment to ensure logs are written
                 setTimeout(() => {
-                  window.location.href = '/dashboard?from_auth=true';
+                  router.push('/dashboard?from_auth=true');
                 }, 100);
                 return;
               }
@@ -670,7 +672,7 @@ export function useAuth() {
                 
                 // Redirect but wait a moment to ensure logs are written
                 setTimeout(() => {
-                  window.location.href = `${dashboardPath}?from_auth=true`;
+                  router.push(`${dashboardPath}?from_auth=true`);
                 }, 100);
                 return;
               }
@@ -684,7 +686,7 @@ export function useAuth() {
             debugLog('accessingProtectedPathWithoutSession', { pathname, redirecting: true });
             
             setTimeout(() => {
-              window.location.href = '/auth/signin';
+              router.push('/auth/signin');
             }, 100);
             return;
           }
@@ -737,7 +739,7 @@ export function useAuth() {
       clearTimeout(initTimer);
       subscription.unsubscribe();
     };
-  }, [fetchUserAccess]);
+  }, [fetchUserAccess, router]);
 
   return {
     user,
