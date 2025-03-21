@@ -126,7 +126,7 @@ export function setSecurityHeaders(res: NextResponse): NextResponse {
   // Content Security Policy
   res.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co https://api.stripe.com; frame-src 'self' https://js.stripe.com; font-src 'self';"
+    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.vercel-insights.com https://tquwnwodvdnnyyuvgadd.supabase.co https://api.ipify.org"
   );
   
   // XSS Protection
@@ -142,10 +142,7 @@ export function setSecurityHeaders(res: NextResponse): NextResponse {
   res.headers.set('X-Frame-Options', 'DENY');
   
   // Permissions Policy (formerly Feature Policy)
-  res.headers.set(
-    'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), interest-cohort=()'
-  );
+  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   
   return res;
 } 

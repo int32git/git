@@ -17,6 +17,7 @@ function SignInContent() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -26,15 +27,91 @@ function SignInContent() {
   useEffect(() => {
     setIsMounted(true);
     setOrigin(window.location.origin);
+    
+    // Function to clear bad tokens
+    const clearBadTokens = () => {
+      try {
+        // Clear cookies
+        document.cookie = 'sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        
+        // Clear localStorage tokens
+        localStorage.removeItem('sb-refresh-token');
+        localStorage.removeItem('sb-access-token');
+        localStorage.removeItem('supabase.auth.token');
+        
+        console.log("Cleared all auth tokens on signin page load");
+      } catch (e) {
+        console.error('Error clearing tokens on signin page:', e);
+      }
+    };
+    
+    // Handle token errors
+    const handleTokenError = (event: any) => {
+      if (event.detail?.error?.message?.includes('Invalid Refresh Token')) {
+        console.log("Caught invalid refresh token error on signin page");
+        clearBadTokens();
+        setError("Your session has expired. Please sign in again.");
+      }
+    };
+    
+    // Listen for auth errors
+    window.addEventListener('supabase.auth.error', handleTokenError);
+    
+    // If we're on the signin page with no token (likely after signout),
+    // proactively clear any bad tokens to prevent errors
+    if (window.location.pathname.includes('/auth/signin')) {
+      clearBadTokens();
+    }
+    
+    return () => {
+      window.removeEventListener('supabase.auth.error', handleTokenError);
+    };
   }, []);
 
-  // Check for error query parameters
+  // Check for URL parameters
   useEffect(() => {
     if (!searchParams) return;
     
+    // Check for error message
     const errorMessage = searchParams.get("error");
     if (errorMessage) {
       setError(decodeURIComponent(errorMessage));
+    }
+    
+    // Check for successful signout or token error
+    const signoutSuccess = searchParams.get("signout") === "success";
+    const tokenError = searchParams.get("token_error") === "true";
+    
+    if (signoutSuccess) {
+      setSuccess("You have been successfully signed out.");
+      
+      // Clear any localStorage values that might cause redirect loops
+      const keysToRemove = [
+        'auth_navigation_intent',
+        'last_redirect_time',
+        'redirect_path',
+        'sb-refresh-token',
+        'sb-access-token',
+        'supabase.auth.token'
+      ];
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    }
+    
+    if (tokenError) {
+      setError("Your session has expired. Please sign in again.");
+      
+      // Clear any token-related values
+      const keysToRemove = [
+        'sb-refresh-token',
+        'sb-access-token',
+        'supabase.auth.token'
+      ];
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+      
+      // Clear cookies too
+      document.cookie = 'sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     }
   }, [searchParams]);
 
@@ -42,15 +119,72 @@ function SignInContent() {
   useEffect(() => {
     const checkSession = async () => {
       try {
+        // If we have a success message, don't auto-redirect
+        if (success) return;
+        
+        // Check for a recent signout or a high redirect count
+        const lastSignoutTime = localStorage.getItem('last_signout_time');
+        const redirectCountData = localStorage.getItem('auth_redirect_count');
+        const now = Date.now();
+        
+        if (lastSignoutTime && (now - parseInt(lastSignoutTime)) < 10000) {
+          console.log("Recent signout detected, staying on sign-in page");
+          return;
+        }
+        
+        // If we're explicitly trying to sign in, don't block based on redirect count
+        const isAttemptingSignIn = sessionStorage.getItem('attempting_signin') === 'true';
+        
+        if (redirectCountData && !isAttemptingSignIn) {
+          try {
+            const data = JSON.parse(redirectCountData);
+            if (data.count > 2) {
+              console.log("Multiple redirects detected, staying on sign-in page");
+              return;
+            }
+          } catch (e) {
+            // Invalid JSON, ignore
+          }
+        }
+        
+        // Don't auto-check for session on the sign-in page - wait for explicit sign-in
+        const explicitSignIn = localStorage.getItem('explicit_sign_in') === 'true';
+        if (!explicitSignIn) {
+          console.log("No explicit sign-in, skipping auto-redirect");
+          return;
+        }
+
+        // Extra safety: if we've just loaded the sign-in page, don't auto-redirect
+        const pageLoadTime = sessionStorage.getItem('signin_page_load_time');
+        if (pageLoadTime && (now - parseInt(pageLoadTime)) < 1000) {
+          console.log("Sign-in page just loaded, skipping immediate redirect check");
+          return;
+        }
+        
+        // Check for session
+        console.log("Explicitly checking for valid session...");
         const { data: { session } } = await supabase!.auth.getSession();
-        if (session) router.push("/dashboard");
+        
+        if (session) {
+          console.log("Valid session found, redirecting to dashboard");
+          // Reset redirect count to avoid issues with future navigation
+          localStorage.setItem('auth_redirect_count', JSON.stringify({ count: 0, timestamp: Date.now() }));
+          localStorage.setItem('explicit_sign_in', 'true');
+          router.push("/dashboard?from_signin=true");
+        }
       } catch (err: any) {
         console.error("Error checking session:", err);
+      } finally {
+        // Clear the signin attempt flag
+        sessionStorage.removeItem('attempting_signin');
       }
     };
     
+    // Record page load time for anti-bounce protection
+    sessionStorage.setItem('signin_page_load_time', Date.now().toString());
+    
     if (supabase) checkSession();
-  }, [supabase, router]);
+  }, [supabase, router, success]);
 
   // Handle sign in with email/password
   const handleEmailSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -61,19 +195,98 @@ function SignInContent() {
       return;
     }
     
+    console.log("Starting login process...");
     setIsLoading(true);
     setError(null);
     
     try {
+      // Mark this as an explicit sign-in attempt
+      localStorage.setItem('explicit_sign_in', 'true');
+      
+      // Set a flag that we're explicitly attempting to sign in
+      sessionStorage.setItem('attempting_signin', 'true');
+      console.log("Set attempting_signin flag");
+      
+      // Clear any existing redirect protection
+      localStorage.removeItem('auth_redirect_count');
+      document.cookie = 'auth_redirect_count=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      console.log("Cleared redirect protection");
+      
+      // Clear any existing tracking data and tokens to ensure a clean login
+      localStorage.removeItem('sb-refresh-token');
+      localStorage.removeItem('sb-access-token');
+      localStorage.removeItem('supabase.auth.token');
+      
+      // Clear cookies too
+      document.cookie = 'sb-refresh-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      console.log("Cleared existing tokens");
+      
       // Use Supabase client directly for authentication
-      const { error } = await supabase!.auth.signInWithPassword({
+      console.log("Calling Supabase auth.signInWithPassword...");
+      const { data, error } = await supabase!.auth.signInWithPassword({
         email,
         password,
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase auth error:", error);
+        throw error;
+      }
       
-      // Successful login - router.push happens in the auth state change handler
+      console.log("Login response received:", data ? "success" : "no data");
+      
+      // Successful login - manually redirect instead of relying on onAuthStateChange
+      if (data.session) {
+        console.log("Login successful, user:", data.user?.email);
+        console.log("Session expires:", data.session.expires_at ? new Date(data.session.expires_at * 1000) : 'unknown');
+        
+        // Reset redirect count for future navigation
+        localStorage.setItem('auth_redirect_count', JSON.stringify({ count: 0, timestamp: Date.now() }));
+        console.log("Reset redirect count");
+        
+        // Clear manual login requirement
+        localStorage.setItem('require_manual_login', 'false');
+        document.cookie = 'require_manual_login=false; path=/; max-age=2592000';
+        console.log("Cleared manual login requirement");
+        
+        // Explicitly store the session in localStorage to ensure it persists
+        // This helps bridge client/server session state
+        try {
+          localStorage.setItem('sb:session', JSON.stringify(data.session));
+          console.log("Stored session in localStorage");
+        } catch (e) {
+          console.error("Error storing session:", e);
+        }
+        
+        // Ensure the cookie is properly set before redirecting
+        // Use the exact format that Supabase expects
+        try {
+          // Store access token in a secure cookie with proper settings
+          const maxAge = data.session.expires_in;
+          document.cookie = `sb-access-token=${data.session.access_token}; path=/; max-age=${maxAge}; SameSite=Lax`;
+          
+          // Store refresh token in a secure cookie with longer expiry (30 days)
+          document.cookie = `sb-refresh-token=${data.session.refresh_token}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Lax`;
+          
+          // Also store user ID for easier access in middleware
+          document.cookie = `sb-user-id=${data.user?.id}; path=/; max-age=${maxAge}; SameSite=Lax`;
+          
+          console.log("Set auth cookies with proper configuration");
+        } catch (e) {
+          console.error("Error setting cookies:", e);
+        }
+        
+        // Short delay to ensure state is updated and cookies are set
+        console.log("Redirecting to dashboard in 800ms...");
+        setTimeout(() => {
+          console.log("Executing redirect now");
+          // Pass an additional parameter to signal this is an actual login with valid session
+          router.push('/dashboard?from_signin=true&has_session=true');
+        }, 800);
+      } else {
+        console.warn("No session data received after successful login");
+      }
     } catch (err: any) {
       console.error("Sign in error:", err);
       setError(err.message || "Failed to sign in. Please check your credentials.");
@@ -121,6 +334,13 @@ function SignInContent() {
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Error</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          
+          {success && (
+            <Alert variant="default" className="bg-green-50 border-green-200 text-green-800">
+              <AlertTitle>Success</AlertTitle>
+              <AlertDescription>{success}</AlertDescription>
             </Alert>
           )}
           

@@ -108,9 +108,37 @@ export async function middleware(req: NextRequest) {
   const now = Date.now();
   const recentRedirect = lastRedirectTime && (now - parseInt(lastRedirectTime)) < 5000;
   
-  if (recentRedirect) {
+  // Check for recent signout
+  const lastSignoutTime = req.cookies.get('last_signout_time')?.value;
+  const recentSignout = lastSignoutTime && (now - parseInt(lastSignoutTime)) < 10000; // 10 seconds
+  
+  // Track redirect counts to prevent loops
+  let redirectCount = 0;
+  const redirectCountCookie = req.cookies.get('auth_redirect_count')?.value;
+  if (redirectCountCookie) {
+    try {
+      const data = JSON.parse(redirectCountCookie);
+      // Reset count if it's been more than 30 seconds
+      if (now - data.timestamp > 30000) {
+        redirectCount = 1;
+      } else {
+        redirectCount = data.count + 1;
+      }
+    } catch (e) {
+      redirectCount = 1;
+    }
+  } else {
+    redirectCount = 1;
+  }
+  
+  // Detect potential redirect loops
+  const tooManyRedirects = redirectCount > 3;
+  
+  if (recentRedirect || tooManyRedirects) {
     debugLog('preventingRedirectLoop', {
       timeSinceLastRedirect: lastRedirectTime ? now - parseInt(lastRedirectTime) : 'unknown',
+      redirectCount,
+      tooManyRedirects,
       threshold: 5000,
       currentPath: pathname
     });
@@ -120,6 +148,16 @@ export async function middleware(req: NextRequest) {
       maxAge: 2592000,  // 30 days
       path: '/' 
     });
+    
+    return res;
+  }
+  
+  // If there was a recent signout and we're trying to access auth pages, don't redirect
+  if (recentSignout && authPaths.some(path => pathname.startsWith(path))) {
+    debugLog('recentSignoutDetected', 'Allowing access to auth page after signout');
+    
+    // Clear the signout time as we've handled it
+    res.cookies.set('last_signout_time', '', { maxAge: 0, path: '/' });
     
     return res;
   }
@@ -146,7 +184,37 @@ export async function middleware(req: NextRequest) {
         },
       }
     );
-    const { data: { session } } = await supabase.auth.getSession();
+    
+    // Get Supabase session, but handle token errors gracefully
+    let session = null;
+    try {
+      const sessionResponse = await supabase.auth.getSession();
+      session = sessionResponse.data.session;
+    } catch (tokenError: any) {
+      // Check for token refresh errors
+      if (tokenError.message && tokenError.message.includes('Invalid Refresh Token')) {
+        debugLog('invalidRefreshToken', 'Detected invalid refresh token in middleware');
+        
+        // Clear the invalid tokens
+        res.cookies.set('sb-refresh-token', '', { maxAge: 0, path: '/' });
+        res.cookies.set('sb-access-token', '', { maxAge: 0, path: '/' });
+        
+        // If user was trying to access a protected route, redirect to sign-in with error
+        if (protectedPaths.some(p => pathname.startsWith(p))) {
+          debugLog('redirectingToSignIn', 'Redirecting to sign-in due to token error');
+          const redirectUrl = new URL('/auth/signin', req.url);
+          redirectUrl.searchParams.set('token_error', 'true');
+          const redirectResponse = NextResponse.redirect(redirectUrl);
+          return redirectResponse;
+        }
+        
+        // Otherwise, just continue with no session
+        session = null;
+      } else {
+        // For other errors, rethrow
+        throw tokenError;
+      }
+    }
     
     debugLog('Authentication check result:', !!session);
     
@@ -154,9 +222,29 @@ export async function middleware(req: NextRequest) {
     if (protectedPaths.some(protectedPath => pathname.startsWith(protectedPath)) && !session) {
       debugLog('Unauthenticated access to protected path:', pathname);
       
-      // If manual login is required or we had a recent redirect, don't redirect to prevent loops
-      if (requireManualLogin || recentRedirect) {
+      // Check if this is coming directly from a sign-in page
+      const fromSignin = url.searchParams.get('from_signin') === 'true';
+      if (fromSignin) {
+        debugLog('comingFromSigninButNoSession', 'Coming from sign-in page but no session found, allowing access');
+        // This is an edge case - user signed in successfully but session not detected in middleware
+        // Allow access to the route, and let the client-side handle session errors
+        return res;
+      }
+      
+      // If manual login is required, don't redirect to prevent loops
+      if (requireManualLogin || recentRedirect || tooManyRedirects) {
         debugLog('Allowing access to protected page without session due to manual login requirement');
+        return res;
+      }
+      
+      // Check for cookies to confirm there truly is no session
+      const hasAccessToken = req.cookies.get('sb-access-token')?.value;
+      const hasRefreshToken = req.cookies.get('sb-refresh-token')?.value;
+      
+      // If there are tokens but no session, this could be an auth state discrepancy
+      // Allow access rather than bouncing back and forth
+      if (hasAccessToken || hasRefreshToken) {
+        debugLog('accessTokenFoundButNoSession', 'Tokens found but no session, potential auth state mismatch');
         return res;
       }
       
@@ -170,6 +258,12 @@ export async function middleware(req: NextRequest) {
       redirectResponse.cookies.set('last_redirect_time', now.toString(), { maxAge: 60 });
       redirectResponse.cookies.set('redirect_path', pathname, { maxAge: 300 });
       
+      // Update redirect count
+      redirectResponse.cookies.set('auth_redirect_count', JSON.stringify({ 
+        count: redirectCount, 
+        timestamp: now 
+      }), { maxAge: 300, path: '/' });
+      
       return redirectResponse;
     }
     
@@ -178,8 +272,15 @@ export async function middleware(req: NextRequest) {
       debugLog('Authenticated user accessing auth page:', pathname);
       
       // If manual login is required or force parameter is set, allow access
-      if (requireManualLogin || forceParam === 'true') {
+      if (requireManualLogin || forceParam === 'true' || recentRedirect || tooManyRedirects) {
         debugLog('Allowing authenticated user to access auth page due to manual login or force parameter');
+        return res;
+      }
+      
+      // Check for from_signin parameter which indicates direct login
+      const fromSignin = url.searchParams.get('from_signin') === 'true';
+      if (fromSignin) {
+        debugLog('Detected direct sign-in, skipping middleware redirect');
         return res;
       }
       
@@ -193,6 +294,12 @@ export async function middleware(req: NextRequest) {
         const redirectResponse = NextResponse.redirect(redirectUrl);
         redirectResponse.cookies.set('last_redirect_time', now.toString(), { maxAge: 60 });
         redirectResponse.cookies.set('redirect_path', pathname, { maxAge: 300 });
+        
+        // Update redirect count
+        redirectResponse.cookies.set('auth_redirect_count', JSON.stringify({ 
+          count: redirectCount, 
+          timestamp: now 
+        }), { maxAge: 300, path: '/' });
         
         return redirectResponse;
       }
@@ -225,6 +332,12 @@ export async function middleware(req: NextRequest) {
       const redirectResponse = NextResponse.redirect(redirectUrl);
       redirectResponse.cookies.set('last_redirect_time', now.toString(), { maxAge: 60 });
       redirectResponse.cookies.set('redirect_path', pathname, { maxAge: 300 });
+      
+      // Update redirect count
+      redirectResponse.cookies.set('auth_redirect_count', JSON.stringify({ 
+        count: redirectCount, 
+        timestamp: now 
+      }), { maxAge: 300, path: '/' });
       
       return redirectResponse;
     }
