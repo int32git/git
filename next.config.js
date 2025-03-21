@@ -13,6 +13,10 @@ const nextConfig = {
     // Allow production builds to successfully complete even with ESLint errors
     ignoreDuringBuilds: true,
   },
+  // Configure Supabase Auth routes in Edge Runtime
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/auth-helpers-nextjs'],
+  },
   async headers() {
     return [
       {

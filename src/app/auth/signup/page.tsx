@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 import type { AuthChangeEvent } from '@supabase/supabase-js';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Database } from "@/types/supabase";
@@ -15,10 +15,14 @@ import ErrorBoundary from '@/components/error-boundary';
 import { Loading } from '@/components/ui/loading';
 import Link from 'next/link';
 import EmailVerification from '@/components/auth/email-verification';
+import { createBrowserClient } from "@supabase/ssr";
 
 function SignUpContent() {
   const [supabase] = useState(() => 
-    createClientComponentClient<Database>()
+    createBrowserClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
   );
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState<string>('');

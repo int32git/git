@@ -1,5 +1,6 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { CookieOptions } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { Database } from '@/types/supabase';
@@ -54,7 +55,8 @@ export async function POST(request: NextRequest) {
     const { email, password } = validation.data as RegistrationInput;
     
     // Create a Supabase client for the Route Handler
-    const supabase = createRouteHandlerClient<Database>({ cookies });
+    const cookieStore = cookies();
+const supabase = createServerClient<Database>({ cookies });
     
     // Get origin for redirect URLs
     const origin = new URL(request.url).origin;

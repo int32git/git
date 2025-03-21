@@ -1,5 +1,6 @@
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { CookieOptions } from '@supabase/ssr';
 import { Database } from '@/types/supabase';
 import logger from './logger';
 import { sanitizeString } from './validation';
@@ -37,7 +38,8 @@ export async function createUserProfile(userId: string, email: string, fullName?
     const sanitizedEmail = sanitizeString(email);
     const sanitizedFullName = fullName ? sanitizeString(fullName) : null;
     
-    const supabase = createServerComponentClient<Database>({ cookies });
+    const cookieStore = cookies();
+const supabase = createServerClient<Database>({ cookies });
     
     logger.info(`Creating user profile`, { 
       meta: { 
@@ -124,7 +126,23 @@ export async function createUserProfile(userId: string, email: string, fullName?
  */
 async function createUserOrganization(userId: string, name: string): Promise<ProfileResult> {
   try {
-    const supabase = createServerComponentClient<Database>({ cookies });
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set(name, value, options);
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.set(name, '', { ...options, maxAge: 0 });
+          },
+        },
+      }
+    );
     
     // Sanitize inputs
     const sanitizedUserId = sanitizeString(userId);
