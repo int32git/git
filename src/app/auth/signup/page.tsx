@@ -39,6 +39,8 @@ function SignUpContent() {
   
   // Check for query parameters that might indicate status
   useEffect(() => {
+    if (!searchParams) return;
+    
     const verificationStatus = searchParams.get('verification');
     const userEmail = searchParams.get('email');
     
@@ -140,7 +142,7 @@ function SignUpContent() {
         type: 'signup',
         email: email,
         options: {
-          emailRedirectTo: `${origin}/auth/api/callback?type=signup`,
+          emailRedirectTo: `${origin}/api/auth/callback?type=signup`,
         }
       });
       
@@ -218,7 +220,7 @@ function SignUpContent() {
         email: emailFromForm,
         password: passwordFromForm,
         options: {
-          emailRedirectTo: `${origin}/auth/api/callback?type=signup`,
+          emailRedirectTo: `${origin}/api/auth/callback?type=signup`,
         }
       });
       
@@ -243,7 +245,7 @@ function SignUpContent() {
           <EmailVerification 
             email={email}
             onResendSuccess={() => console.log('Verification email resent successfully')}
-            redirectTo={`${origin}/auth/api/callback?type=signup`}
+            redirectTo={`${origin}/api/auth/callback?type=signup`}
             showSignInLink={true}
           />
         </div>
@@ -290,8 +292,15 @@ function SignUpContent() {
                 placeholder="Password"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
               />
-              <Button type="submit" className="w-full" isLoading={isLoading}>
-                Sign In
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing up...
+                  </>
+                ) : (
+                  'Sign Up'
+                )}
               </Button>
             </form>
           </CardContent>

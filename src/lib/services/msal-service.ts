@@ -5,7 +5,7 @@ const msalConfig: Configuration = {
   auth: {
     clientId: '', // Will be populated at runtime
     authority: '', // Will be populated at runtime (https://login.microsoftonline.com/{tenantId})
-    redirectUri: typeof window !== 'undefined' ? window.location.origin + '/auth/api/callback' : '',
+    redirectUri: typeof window !== 'undefined' ? window.location.origin + '/auth/callback' : '',
     postLogoutRedirectUri: typeof window !== 'undefined' ? window.location.origin : '',
   },
   cache: {
