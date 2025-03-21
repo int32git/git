@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
       email,
       password,
       options: {
-        emailRedirectTo: `${origin}/auth/callback?type=signup`,
+        emailRedirectTo: `${origin}/auth/api/callback?type=signup`,
       }
     });
     

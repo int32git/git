@@ -43,7 +43,7 @@ export default function EmailVerification({
         type: 'signup',
         email,
         options: {
-          emailRedirectTo: redirectTo || `${window.location.origin}/auth/callback`,
+          emailRedirectTo: redirectTo || `${window.location.origin}/auth/api/callback`,
         },
       });
 

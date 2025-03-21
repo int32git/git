@@ -140,7 +140,7 @@ function SignUpContent() {
         type: 'signup',
         email: email,
         options: {
-          emailRedirectTo: `${origin}/auth/callback?type=signup`,
+          emailRedirectTo: `${origin}/auth/api/callback?type=signup`,
         }
       });
       
@@ -218,7 +218,7 @@ function SignUpContent() {
         email: emailFromForm,
         password: passwordFromForm,
         options: {
-          emailRedirectTo: `${origin}/auth/callback?type=signup`,
+          emailRedirectTo: `${origin}/auth/api/callback?type=signup`,
         }
       });
       
@@ -243,7 +243,7 @@ function SignUpContent() {
           <EmailVerification 
             email={email}
             onResendSuccess={() => console.log('Verification email resent successfully')}
-            redirectTo={`${origin}/auth/callback?type=signup`}
+            redirectTo={`${origin}/auth/api/callback?type=signup`}
             showSignInLink={true}
           />
         </div>
