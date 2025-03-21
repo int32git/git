@@ -1,0 +1,171 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnpm-store/
+
+# testing
+/coverage
+/.nyc_output
+/cypress/screenshots
+/cypress/videos
+/playwright-report/
+/test-results/
+
+# next.js
+/.next/
+/out/
+.next-boost/
+.swc/
+
+# production
+/build
+/dist
+/storybook-static
+
+# misc
+.DS_Store
+*.pem
+Thumbs.db
+.directory
+.project
+.settings
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# local env files
+.env
+.env*.local
+.env.development
+.env.test
+.env.production
+.env.staging
+*.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE and editor folders
+.cursor/
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+.vs/
+.nova/
+.netbeans/
+.sass-cache/
+*.launch
+*.iml
+*.iws
+*.ipr
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# User-specific files
+*.tmp
+*.bak
+*.backup
+*.local
+*.old
+*.orig
+*.rej
+
+# Cache directories
+.cache/
+.npm/
+.eslintcache
+.stylelintcache
+.prettiercache
+.turbo
+.webcache/
+
+# Database files and backups
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+*.dump
+*.bson
+*.hprof
+
+# User data and uploads
+/public/uploads/
+/user-data/
+/data/
+/uploads/
+/storage/
+/temp/
+/tmp/
+
+# Secrets and keys
+*.key
+*.pem
+*.cert
+*.crt
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.ca-bundle
+*.cer
+*credentials*
+*secret*
+*_token*
+*_key*
+*_password*
+
+# Generated content
+/generated/
+sitemap*.xml
+robots.txt
+/.sass-cache
+*.css.map
+*.js.map
+*.css.d.ts
+*.js.d.ts
+
+# Package-specific
+.docusaurus/
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
+.vuepress/dist
+.hugo_build.lock
+.nuxt
+.nitro
+.output
+.vite-ssg-dist
+.vite-ssg-temp
+**/tsconfig.tsbuildinfo
+bower_components/
+
+# OS-specific files
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+desktop.ini 
